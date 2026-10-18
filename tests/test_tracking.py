@@ -299,3 +299,55 @@ def test_only_one_copy_of_the_app_takes_a_round_of_checks():
     conn.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)")
     assert scheduler.claim_round(conn) and not scheduler.claim_round(conn)
     assert scheduler.claim_round(conn, minutes=-1) is True  # a later round is free again
+
+
+def test_a_listing_whose_page_is_gone_twice_in_a_row_moves_to_gone(monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    from pathlib import Path
+
+    from tracker import checker, db, listings
+    from tracker.stores.base import ListingGone, Product
+
+    path = str(tmp_path / "t.db")
+    conn = db.connect(path)
+    conn.executescript((Path(db.__file__).parent / "schema.sql").read_text(encoding="utf-8"))
+    for table, column, kind in db.ADDED_COLUMNS:
+        if column not in {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+    conn.execute("INSERT INTO hunts (id, name, status, created_at, updated_at) VALUES (1, 'Hunt', 'active', '2026-10-01', '2026-10-01')")
+    for listing_id in (1, 2):
+        conn.execute("INSERT INTO listings (id, hunt_id, retailer, url, title, state, first_seen_at, last_seen_at) "
+                     "VALUES (?, 1, 'croma', ?, 'A laptop', 'tracked', '2026-10-01', '2026-10-01')", (listing_id, f"https://x.test/{listing_id}"))
+    conn.commit()
+
+    class Store:
+        LABEL = "Croma"
+
+        @staticmethod
+        def prepare(page, pincode):
+            return True
+
+        @staticmethod
+        def read(page, url, pincode):
+            if url.endswith("/1"):
+                raise ListingGone("Croma no longer has this product page (HTTP 404).")
+            return Product(url=url, title="A laptop", price_inr=90000)
+
+    told = []
+    monkeypatch.setattr(checker, "STORES", {"croma": Store})
+    monkeypatch.setattr(checker, "open_page", lambda *args: nullcontext())
+    monkeypatch.setattr(checker, "_pause", lambda: None)
+    monkeypatch.setattr(checker.alerts, "after_check", lambda *args: 0)
+    monkeypatch.setattr(checker.alerts, "listing_gone", lambda conn, mail, hunt, row: told.append(row["id"]))
+    options = {"database": path, "channel": None, "headless": True, "mail": {}}
+
+    checker.run(options)  # one "gone" answer could be a hiccup: still checked
+    assert told == [] and [row["id"] for row in checker.due_listings(conn)["croma"]] == [1, 2]
+    checker.run(options)  # the second in a row moves it to Gone, once, and the store does not count as failed
+    assert told == [1] and [row["id"] for row in checker.due_listings(conn)["croma"]] == [2]
+    assert json.loads(conn.execute("SELECT value FROM settings WHERE key = 'last_check_result'").fetchone()[0])["gone"] == 1
+    assert checker.RUN["stores"]["croma"]["phase"] == "done"
+    # Price points are kept, and a search that finds the page again brings it back.
+    listings.save(conn, 1, "croma", Product(url="https://x.test/1", title="A laptop", price_inr=88000), {}, None)
+    assert [row["id"] for row in checker.due_listings(conn)["croma"]] == [1, 2]
+    conn.close()

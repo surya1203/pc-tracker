@@ -43,7 +43,7 @@ def read(page, url, pincode):
     slug = urlsplit(url).path.rstrip("/").rsplit("/", 1)[-1]
     if "/product/" not in url or not slug:
         raise StoreError("That is not a Reliance Digital product page.")
-    item = fetch_json(page, f"/ext/raven-api/catalog/v1.0/products/{slug}", LABEL)
+    item = fetch_json(page, f"/ext/raven-api/catalog/v1.0/products/{slug}", LABEL, gone_on_404=True)
     specs = {}
     for group in item.get("grouped_attributes") or []:
         for detail in group.get("details") or []:

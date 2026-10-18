@@ -1,7 +1,7 @@
 """Samsung India's own store (samsung.com/in): its laptop finder API lists every Galaxy Book with price and stock."""
 import re
 
-from .base import Hit, Product, StoreError, clean, fetch_json, rupees, without_brand
+from .base import Hit, ListingGone, Product, StoreError, clean, fetch_json, rupees, without_brand
 
 KEY = "samsung"
 LABEL = "Samsung Store"
@@ -44,7 +44,7 @@ def read(page, url, pincode):
     path = url.replace(SITE, "").split("?")[0].rstrip("/")
     model = next((m for m in _models(page) if m["pdpUrl"].rstrip("/") == path), None)
     if not model:
-        raise StoreError("Samsung no longer lists this model.")
+        raise ListingGone("Samsung no longer lists this model.")
     specs = {"Brand": "Samsung", "Model Number": clean(model.get("modelCode"))}
     # The finder gives no spec sheet; the name and page address state the processor, memory and storage.
     chip = re.search(r"\bUltra\s+X?([3579])\b", model.get("displayName") or "")

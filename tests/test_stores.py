@@ -188,7 +188,7 @@ def test_a_recheck_keeps_what_kind_a_listing_is():
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.execute("CREATE TABLE listings (id INTEGER PRIMARY KEY, title, image_url, model_number, specs, raw_specs, last_seen_at, "
-                 "deliverable, delivery_note, delivery_pincode)")
+                 "deliverable, delivery_note, delivery_pincode, gone_checks DEFAULT 0, gone_at)")
     conn.execute("CREATE TABLE price_points (id INTEGER PRIMARY KEY, listing_id, price_inr, mrp_inr, in_stock, checked_at, source)")
     conn.execute("INSERT INTO listings (id, specs) VALUES (1, ?)", (json.dumps({"kind": "tower", "ram_gb": 16}),))
     listings.record(conn, 1, Product(url="https://x.test/a", title="Tower", price_inr=150000), {"ram_gb": 32}, None)

@@ -17,6 +17,18 @@ class StoreError(Exception):
     """The store could not be read: blocked, changed its layout, or timed out."""
 
 
+class ListingGone(StoreError):
+    """The store answered, and says this product page no longer exists."""
+
+
+def open_product(page, url, store):
+    """Open a product page; a page the store answers 'not found' for is gone, not a failed read."""
+    response = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    if response is not None and response.status in (404, 410):
+        raise ListingGone(f"{store} no longer has this product page (HTTP {response.status}).")
+    return response
+
+
 @dataclass
 class Hit:
     url: str
@@ -76,8 +88,11 @@ _FETCH_JS = """async ([url, options]) => {
 }"""
 
 
-def fetch_json(page, url, store, method="GET", headers=None, body=None):
-    """Call one of a store's own data APIs from inside its page, so the request looks like the site's."""
+def fetch_json(page, url, store, method="GET", headers=None, body=None, gone_on_404=False):
+    """Call one of a store's own data APIs from inside its page, so the request looks like the site's.
+
+    With `gone_on_404`, a 404 means the product asked for no longer exists.
+    """
     options = {"method": method, "headers": headers or {}}
     if body is not None:
         options["body"] = json.dumps(body)
@@ -86,6 +101,8 @@ def fetch_json(page, url, store, method="GET", headers=None, body=None):
         result = page.evaluate(_FETCH_JS, [url, options])
     except Exception as error:
         raise StoreError(f"{store}'s data could not be fetched.") from error
+    if gone_on_404 and result["status"] == 404:
+        raise ListingGone(f"{store} no longer lists this product (HTTP 404).")
     if result["status"] != 200 or result["data"] is None:
         raise StoreError(f"{store} refused a data request (HTTP {result['status']}).")
     return result["data"]

@@ -2,7 +2,7 @@
 import re
 from urllib.parse import quote
 
-from .base import Hit, Product, StoreError, clean, fetch_json, is_tower, ld_product, relevant, rupees
+from .base import Hit, Product, StoreError, clean, fetch_json, is_tower, ld_product, open_product, relevant, rupees
 
 KEY = "croma"
 LABEL = "Croma"
@@ -81,7 +81,7 @@ def read(page, url, pincode):
     if not code:
         raise StoreError("That is not a Croma product page.")
     code = code.group(1)
-    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    open_product(page, url, LABEL)
     try:
         page.wait_for_selector("h1", timeout=15000)
         # The spec sheet is drawn a moment after the heading.

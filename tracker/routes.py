@@ -201,7 +201,7 @@ def hunt_restore(hunt_id):
 def tracked():
     groups = listings.tracked()
     return render_template(
-        "tracked.html", groups=groups, count=sum(len(group["listings"]) for group in groups),
+        "tracked.html", groups=groups, count=sum(len(group["listings"]) for group in groups), gone=listings.gone(),
         schedule=_schedule(), run=checker.RUN, pincode=get_setting("delivery_pincode"),
     )
 
@@ -248,6 +248,14 @@ def tracked_untrack(listing_id):
     if not row or not listings.set_state(row["hunt_id"], listing_id, "new"):
         abort(404)
     flash("Stopped tracking; its price history is kept.")
+    return redirect(url_for("main.tracked"))
+
+
+@bp.route("/tracked/<int:listing_id>/bring-back", methods=["POST"])
+def tracked_bring_back(listing_id):
+    if not listings.bring_back(listing_id):
+        abort(404)
+    flash("Brought back: it will be checked again in the next round.")
     return redirect(url_for("main.tracked"))
 
 

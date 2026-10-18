@@ -23,11 +23,12 @@ RULES = {
     "drop": "Price drop",
     "back_in_stock": "Back in stock",
     "new_match": "New match",
+    "gone": "No longer listed",
     "test": "Test alert",
 }
 DEFAULT_COOLDOWN_HOURS = 24
 # The stripe down the side of a Discord alert.
-COLOURS = {"new_low": 0x16A34A, "target": 0x2563EB, "drop": 0xD97706, "back_in_stock": 0x7C3AED, "new_match": 0x0891B2}
+COLOURS = {"new_low": 0x16A34A, "target": 0x2563EB, "drop": 0xD97706, "back_in_stock": 0x7C3AED, "new_match": 0x0891B2, "gone": 0x64748B}
 
 
 def rupees(amount):
@@ -256,6 +257,26 @@ def after_check(conn, mail, hunt, listing, points):
         conn.commit()
         raised += 1
     return raised
+
+
+def listing_gone(conn, mail, hunt, listing):
+    """Say once that a tracked listing's store page no longer exists, so it has stopped being checked."""
+    store = catalog.RETAILER_LABELS.get(listing["retailer"], listing["retailer"])
+    last = conn.execute("SELECT price_inr FROM price_points WHERE listing_id = ? AND price_inr IS NOT NULL "
+                        "ORDER BY checked_at DESC, id DESC LIMIT 1", (listing["id"],)).fetchone()
+    price = last["price_inr"] if last else None  # the last price it had, for the card
+    detail = f"{store} no longer has this product page, so it has stopped being checked. It is under Gone on the Tracked page."
+    subject = f"{RULES['gone']}: {listing['title'][:70]}"
+    body = f"{detail}\n{listing['title']}\n{store} · hunt “{hunt['name']}”\n{listing['url']}"
+    card = {"rule": "gone", "detail": detail, "price": price, "title": listing["title"],
+            "url": listing["url"], "image": listing["image_url"], "store": store, "hunt": hunt["name"]}
+    reached, problems = deliver(conn, mail, subject, body, card=card)
+    conn.execute(
+        "INSERT INTO alerts (hunt_id, listing_id, rule, channel, price_inr, message, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (hunt["id"], listing["id"], "gone", ", ".join(reached), price,
+         json.dumps({"detail": detail, "problems": problems}, ensure_ascii=False), now()),
+    )
+    conn.commit()
 
 
 def new_matches(conn, mail, hunt, found):

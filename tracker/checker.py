@@ -2,6 +2,7 @@
 
 One thread per store, each with its own browser, a few at a time. Each check adds
 a price point and may raise alerts. Listings of paused hunts are left alone.
+A listing whose store says its page no longer exists, GONE_AFTER checks in a row, is moved to Gone.
 """
 import json
 import threading
@@ -11,8 +12,9 @@ from .browser import open_page
 from .db import connect, now
 from .search import MAX_BROWSERS, MAX_FAILURES_IN_A_ROW, _pause
 from .stores import STORES
-from .stores.base import StoreError
+from .stores.base import ListingGone, StoreError
 
+GONE_AFTER = 2
 RUN = {"running": False, "stores": {}, "started_at": None}
 _lock = threading.Lock()
 
@@ -33,7 +35,7 @@ def due_listings(conn):
     rows = conn.execute(
         """
         SELECT l.* FROM listings l JOIN hunts h ON h.id = l.hunt_id
-        WHERE l.state = 'tracked' AND h.status = 'active' AND h.deleted_at IS NULL
+        WHERE l.state = 'tracked' AND l.gone_at IS NULL AND h.status = 'active' AND h.deleted_at IS NULL
         ORDER BY l.id
         """
     ).fetchall()
@@ -56,6 +58,13 @@ def _check_store(store, rows, state, options, turn):
             for row in rows:
                 try:
                     product = store.read(page, row["url"], pincode)
+                except ListingGone:
+                    failures = 0  # the store answered; this one product is what is missing
+                    state["failed"] += 1
+                    if listings.missing(conn, row["id"], GONE_AFTER):
+                        state["gone"] += 1
+                        hunt = conn.execute("SELECT * FROM hunts WHERE id = ?", (row["hunt_id"],)).fetchone()
+                        alerts.listing_gone(conn, options["mail"], hunt, row)
                 except Exception as error:
                     failures += 1
                     state["failed"] += 1
@@ -91,7 +100,7 @@ def run(options):
             conn.close()
         RUN.update(running=True, started_at=now(), stores={
             key: {"label": STORES[key].LABEL, "phase": "queued", "total": len(rows), "checked": 0,
-                  "failed": 0, "alerts": 0, "error": None}
+                  "failed": 0, "gone": 0, "alerts": 0, "error": None}
             for key, rows in by_store.items()
         })
     try:
@@ -109,6 +118,7 @@ def run(options):
             "checked": sum(s["checked"] - s["failed"] for s in states),
             "failed": sum(s["failed"] for s in states),
             "alerts": sum(s["alerts"] for s in states),
+            "gone": sum(s["gone"] for s in states),
             "stores_failed": [s["label"] for s in states if s["phase"] == "failed"],
         }
         conn = connect(options["database"])

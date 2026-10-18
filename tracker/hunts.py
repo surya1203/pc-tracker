@@ -317,7 +317,7 @@ def update(hunt_id, hunt):
 _SELECT = """
     SELECT h.*,
            (SELECT COUNT(*) FROM listings l WHERE l.hunt_id = h.id AND l.state != 'ignored') AS listing_count,
-           (SELECT COUNT(*) FROM listings l WHERE l.hunt_id = h.id AND l.state = 'tracked') AS tracked_count
+           (SELECT COUNT(*) FROM listings l WHERE l.hunt_id = h.id AND l.state = 'tracked' AND l.gone_at IS NULL) AS tracked_count
     FROM hunts h
     WHERE h.deleted_at IS NULL
 """

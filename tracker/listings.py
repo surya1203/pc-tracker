@@ -22,7 +22,8 @@ def save(conn, hunt_id, retailer, product, specs, pincode):
         listing_id = known["id"]
         conn.execute(
             "UPDATE listings SET title = ?, image_url = ?, model_number = ?, specs = ?, raw_specs = ?, "
-            "last_seen_at = ?, deliverable = ?, delivery_note = ?, delivery_pincode = ? WHERE id = ?",
+            "last_seen_at = ?, deliverable = ?, delivery_note = ?, delivery_pincode = ?, gone_checks = 0, gone_at = NULL "
+            "WHERE id = ?",  # a search found the page again, so it is not gone
             values + (listing_id,),
         )
     else:
@@ -50,7 +51,8 @@ def record(conn, listing_id, product, specs, pincode):
     deliverable = None if product.deliverable is None else int(product.deliverable)
     conn.execute(
         "UPDATE listings SET title = ?, image_url = COALESCE(?, image_url), model_number = COALESCE(?, model_number), "
-        "specs = ?, raw_specs = ?, last_seen_at = ?, deliverable = ?, delivery_note = ?, delivery_pincode = ? WHERE id = ?",
+        "specs = ?, raw_specs = ?, last_seen_at = ?, deliverable = ?, delivery_note = ?, delivery_pincode = ?, gone_checks = 0 "
+        "WHERE id = ?",
         (product.title, product.image_url, specs.get("model_number"), json.dumps(specs, ensure_ascii=False),
          json.dumps(product.raw_specs, ensure_ascii=False), stamp, deliverable, product.delivery_note,
          pincode if deliverable is not None else None, listing_id),
@@ -60,6 +62,42 @@ def record(conn, listing_id, product, specs, pincode):
         (listing_id, product.price_inr, product.mrp_inr, int(product.in_stock), stamp),
     )
     conn.commit()
+
+
+def missing(conn, listing_id, limit):
+    """Note that the store says this listing's page is gone. Returns True when that moves it to Gone."""
+    conn.execute("UPDATE listings SET gone_checks = gone_checks + 1 WHERE id = ?", (listing_id,))
+    moved = conn.execute(
+        "UPDATE listings SET gone_at = ? WHERE id = ? AND gone_checks >= ? AND gone_at IS NULL", (now(), listing_id, limit)
+    ).rowcount
+    conn.commit()
+    return bool(moved)
+
+
+def bring_back(listing_id):
+    """Put a Gone listing back on the Tracked page, to be checked again."""
+    db = get_db()
+    changed = db.execute("UPDATE listings SET gone_at = NULL, gone_checks = 0 WHERE id = ? AND gone_at IS NOT NULL",
+                         (listing_id,)).rowcount
+    db.commit()
+    return bool(changed)
+
+
+def gone():
+    """Tracked listings whose store page no longer exists, most recently gone first, with their last price."""
+    rows = get_db().execute(
+        """
+        SELECT l.*, h.name AS hunt_name FROM listings l JOIN hunts h ON h.id = l.hunt_id
+        WHERE l.state = 'tracked' AND l.gone_at IS NOT NULL AND h.deleted_at IS NULL
+        ORDER BY l.gone_at DESC, l.id
+        """
+    ).fetchall()
+    result = []
+    for row in rows:
+        listing = dict(row)
+        listing.update(history.summary(points(get_db(), listing["id"])))
+        result.append(listing)
+    return result
 
 
 def points(conn, listing_id):
@@ -80,7 +118,7 @@ def tracked():
         """
         SELECT l.*, h.name AS hunt_name, h.status AS hunt_status
         FROM listings l JOIN hunts h ON h.id = l.hunt_id
-        WHERE l.state = 'tracked' AND h.deleted_at IS NULL
+        WHERE l.state = 'tracked' AND l.gone_at IS NULL AND h.deleted_at IS NULL
         """
     ).fetchall()
     groups, wanted = {}, {}
@@ -137,6 +175,8 @@ def for_hunt(hunt):
         if listing["price_inr"] and listing["mrp_inr"] and listing["mrp_inr"] > listing["price_inr"]:
             listing["discount"] = round(100 * (1 - listing["price_inr"] / listing["mrp_inr"]))
         key = listing["state"] if listing["state"] != "new" else listing["verdict"]
+        if listing["gone_at"] and key == "tracked":
+            listing["chips"] = [("Gone from the store", "miss")] + listing["chips"]
         groups[key].append(listing)
     for items in groups.values():
         items.sort(key=lambda item: (item["price_inr"] is None, item["price_inr"] or 0, item["id"]))
@@ -162,7 +202,8 @@ def review(hunt_id, shown, ticked):
 def set_state(hunt_id, listing_id, state):
     db = get_db()
     changed = db.execute(
-        "UPDATE listings SET state = ? WHERE id = ? AND hunt_id = ?", (state, listing_id, hunt_id)
+        "UPDATE listings SET state = ?, gone_checks = 0, gone_at = NULL WHERE id = ? AND hunt_id = ?",
+        (state, listing_id, hunt_id)
     ).rowcount
     db.commit()
     return bool(changed)

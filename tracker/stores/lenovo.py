@@ -2,7 +2,7 @@
 import re
 from urllib.parse import quote, urlsplit
 
-from .base import Hit, Product, StoreError, clean, fetch_json, rupees, without_brand
+from .base import Hit, ListingGone, Product, StoreError, clean, fetch_json, rupees, without_brand
 
 KEY = "lenovo"
 LABEL = "Lenovo Store"
@@ -72,7 +72,7 @@ def read(page, url, pincode):
         if item:
             break
     if not item:
-        raise StoreError("Lenovo no longer lists this model.")
+        raise ListingGone("Lenovo no longer lists this model.")
     specs = {"Brand": "Lenovo", "Part Number": item["productCode"]}
     for row in item.get("classification") or []:
         name, value = clean(row.get("a")), clean(re.sub(r"<[^>]+>", " ", str(row.get("b") or "")))

@@ -1,7 +1,7 @@
 """Apple India's own store (apple.com/in): every Mac configuration has its own page with a price."""
 import re
 
-from .base import Hit, Product, StoreError, clean, ld_offer, ld_product, without_brand
+from .base import Hit, Product, StoreError, clean, ld_offer, ld_product, open_product, without_brand
 
 KEY = "apple"
 LABEL = "Apple Store"
@@ -46,7 +46,7 @@ def search(page, query, limit, kind="laptop"):
 
 
 def read(page, url, pincode):
-    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    open_product(page, url, LABEL)
     block = ld_product(page)
     if not block.get("name"):
         raise StoreError("Apple's product page did not load as expected.")

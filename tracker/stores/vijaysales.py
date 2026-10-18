@@ -3,7 +3,7 @@ import html
 import re
 from urllib.parse import quote
 
-from .base import Hit, Product, StoreError, clean, fetch_json, is_tower, relevant, rupees
+from .base import Hit, ListingGone, Product, StoreError, clean, fetch_json, is_tower, relevant, rupees
 
 KEY = "vijaysales"
 LABEL = "Vijay Sales"
@@ -59,7 +59,7 @@ def read(page, url, pincode):
     data = fetch_json(page, f"{PRODUCT_API}?query={quote(_PRODUCT_QUERY % sku, safe='')}", LABEL, headers={"store": "vijay_sales"})
     items = ((data.get("data") or {}).get("products") or {}).get("items") or []
     if not items:
-        raise StoreError("Vijay Sales no longer lists this product.")
+        raise ListingGone("Vijay Sales no longer lists this product.")
     item = items[0]
     price = rupees(item.get("vsp")) or rupees(item["price_range"]["maximum_price"]["final_price"]["value"])
     mrp = rupees(item.get("mrp"))

@@ -2,7 +2,7 @@
 import re
 from urllib.parse import quote_plus
 
-from .base import Hit, Product, StoreError, clean, rupees
+from .base import Hit, ListingGone, Product, StoreError, clean, rupees
 
 KEY = "amazon"
 LABEL = "Amazon"
@@ -48,13 +48,13 @@ _PRODUCT_JS = """() => {
 
 def _goto(page, url):
     try:
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        response = page.goto(url, wait_until="domcontentloaded", timeout=45000)
     except Exception as error:
         # Amazon reloads the page by itself after a location change, which cancels a navigation in flight.
         if "ERR_ABORTED" not in str(error):
             raise
         page.wait_for_timeout(2000)
-        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        response = page.goto(url, wait_until="domcontentloaded", timeout=45000)
     # Amazon sometimes shows a "continue shopping" interstitial before the real page.
     button = page.query_selector('form[action*="/errors/"] button, button:has-text("Continue shopping")')
     if button and not page.query_selector("#captchacharacters"):
@@ -62,6 +62,7 @@ def _goto(page, url):
         page.wait_for_load_state("domcontentloaded")
     if page.query_selector('#captchacharacters, form[action*="validateCaptcha"]'):
         raise StoreError("Amazon asked for a CAPTCHA (it thinks this is a bot). Try again later.")
+    return response
 
 
 def prepare(page, pincode):
@@ -126,7 +127,9 @@ def _delivery(data, pincode):
 
 
 def read(page, url, pincode):
-    _goto(page, url)
+    response = _goto(page, url)
+    if response is not None and response.status in (404, 410):
+        raise ListingGone(f"Amazon no longer has this product page (HTTP {response.status}).")
     try:
         page.wait_for_selector("#productTitle", timeout=15000)
     except Exception as error:

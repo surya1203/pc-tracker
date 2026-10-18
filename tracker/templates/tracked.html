@@ -29,7 +29,7 @@
 </p>
 {% endif %}
 
-{% if not groups %}
+{% if not groups and not gone %}
 <div class="card border-dashed px-6 py-16 text-center">
     <h2 class="text-base font-semibold">Nothing tracked yet</h2>
     <p class="muted mx-auto mt-1 max-w-md text-sm">Open a hunt, search the stores, tick the listings you want and press Track selected. They will show here with their prices.</p>
@@ -144,6 +144,36 @@
     </section>
     {% endfor %}
 </div>
+{% if gone %}
+<section class="mt-8">
+    <h2 class="text-base font-semibold">Gone <span class="muted font-normal">· {{ gone|length }}</span></h2>
+    <p class="muted mt-1 text-sm">The store no longer has these product pages, so they are not checked any more. Their price history is kept.</p>
+    <ul class="card mt-3 divide-y divide-slate-200 overflow-hidden dark:divide-slate-800">
+        {% for l in gone %}
+        {% set store = catalog.RETAILER_LABELS.get(l.retailer, l.retailer) %}
+        <li class="flex flex-wrap items-center gap-x-5 gap-y-2 px-5 py-3">
+            <div class="min-w-0 flex-1 basis-72">
+                <span class="badge bg-slate-900 text-white dark:bg-slate-700">{{ store }}</span>
+                <h3 class="mt-1 line-clamp-2 text-sm font-medium" title="{{ l.title }}">{{ l.title }}</h3>
+                <p class="muted mt-0.5 text-xs">
+                    <a class="hover:underline" href="{{ url_for('main.hunt_detail', hunt_id=l.hunt_id, tab='tracked') }}">{{ l.hunt_name }}</a>
+                    · gone since {{ l.gone_at|when }}{% if l.price_inr %} · last price {{ l.price_inr|inr }}{% endif %}{% if l.low_inr %} · all-time low {{ l.low_inr|inr }}{% endif %}
+                </p>
+            </div>
+            <div class="flex items-center gap-2">
+                <a class="btn btn-secondary" href="{{ l.url }}" target="_blank" rel="noopener noreferrer">Try the page ↗</a>
+                <form method="post" action="{{ url_for('main.tracked_bring_back', listing_id=l.id) }}">
+                    <button class="btn btn-secondary">Bring back</button>
+                </form>
+                <form method="post" action="{{ url_for('main.tracked_untrack', listing_id=l.id) }}">
+                    <button class="btn btn-danger">Untrack</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
 {% if count %}
 <dialog id="history-dialog" class="card w-[min(56rem,calc(100vw-2rem))] p-0 text-slate-900 backdrop:bg-slate-950/60 dark:text-slate-100">
     <div class="p-5">

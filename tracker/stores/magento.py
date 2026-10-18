@@ -5,7 +5,7 @@ They share a results page (product links with one class name) and a product page
 """
 from urllib.parse import quote_plus
 
-from .base import Hit, Product, StoreError, clean, ld_offer, ld_product, relevant, rupees
+from .base import Hit, Product, StoreError, clean, ld_offer, ld_product, open_product, relevant, rupees
 
 _SEARCH_JS = """() => [...document.querySelectorAll('.product-item-info')].map((card) => {
     const link = card.querySelector('a.product-item-link[href], a.product-item-photo[href]');
@@ -78,7 +78,7 @@ def search(page, home, query, limit, label):
 
 
 def read(page, url, label, brand, settle_ms=0):
-    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    open_product(page, url, label)
     try:
         page.wait_for_selector("h1", state="attached", timeout=20000)
     except Exception as error:

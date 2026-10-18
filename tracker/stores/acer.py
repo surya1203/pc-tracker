@@ -10,7 +10,7 @@ import json
 import re
 from urllib.parse import quote_plus
 
-from .base import Hit, Product, StoreError, clean, relevant, rupees, without_brand
+from .base import Hit, ListingGone, Product, StoreError, clean, relevant, rupees, without_brand
 
 KEY = "acer"
 LABEL = "Acer Store"
@@ -79,7 +79,7 @@ def read(page, url, pincode):
     # Acer also turns away searches for the reference number itself.
     card = next((c for c in _cards(page, _phrase(address)) if c["reference"] == reference), None)
     if not card:
-        raise StoreError("Acer no longer lists this model.")
+        raise ListingGone("Acer no longer lists this model.")
     price = rupees(card["price"])
     if not price:
         try:  # the card also carries its details as packed text
