@@ -146,11 +146,11 @@ if (historyDialog) {
         { day: 'numeric', month: 'short', ...(withYear ? { year: 'numeric' } : {}) });
     const SERIES = [
         { key: 'own', label: 'This tracker', light: '#059669', dark: '#199e70', dash: [] },
-        { key: 'imported', label: 'BuyHatke, before tracking began', light: '#2a78d6', dark: '#3987e5', dash: [6, 4] },
+        { key: 'imported', label: 'BuyHatke', light: '#2a78d6', dark: '#3987e5', dash: [6, 4] },
     ];
     let chart = null;
     let loaded = null;
-    let days = 0;
+    let days = 30;  // opens on the last month, where the tracker's own checks are
 
     // A vertical line under the pointer, so the date being read is unmistakable.
     const crosshair = {
@@ -177,7 +177,8 @@ if (historyDialog) {
         const from = days ? Date.now() - days * 86400000 : 0;
         const shown = SERIES.map((series) => ({ ...series, points: loaded[series.key].filter((p) => p.x >= from) }))
             .filter((series) => series.points.length);
-        const all = shown.flatMap((series) => series.points.map((p) => ({ ...p, by: series.label })));
+        const all = shown.flatMap((series) => series.points.map((p) => ({ ...p, by: series.label })))
+            .sort((a, b) => a.x - b.x);  // the chart's date range reads the first and last
 
         if (all.length) {
             const low = all.reduce((a, b) => (b.y < a.y ? b : a));
@@ -187,14 +188,15 @@ if (historyDialog) {
             part('stats').textContent = 'No prices in this period.';
         }
 
-        // The table lists changes only: a row each time the price differs from the one before it.
-        const rows = [];
-        all.sort((a, b) => a.x - b.x).forEach((p, i, list) => {
-            if (i === 0 || list[i - 1].y !== p.y) rows.push(p);
-        });
+        // The table lists changes only: a row each time a source's price differs from its own previous one.
+        // The tracker checks several times a day, so its rows carry the time too.
+        const time = (ms) => new Date(ms).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+        const rows = shown.flatMap((series) => series.points.filter((p, i, list) => i === 0 || list[i - 1].y !== p.y)
+            .map((p) => ({ ...p, by: series.label, own: series.key === 'own' })));
+        rows.sort((a, b) => a.x - b.x);
         part('table').replaceChildren(...rows.reverse().map((p) => {
             const row = document.createElement('tr');
-            [day(p.x), rupees(p.y), p.by].forEach((text) => {
+            [p.own ? `${day(p.x)}, ${time(p.x)}` : day(p.x), rupees(p.y), p.by].forEach((text) => {
                 const cell = document.createElement('td');
                 cell.className = 'py-0.5 pr-3';
                 cell.textContent = text;
@@ -251,7 +253,7 @@ if (historyDialog) {
                     tooltip: {
                         displayColors: true,
                         callbacks: {
-                            title: (items) => day(items[0].parsed.x),
+                            title: (items) => `${day(items[0].parsed.x)}, ${new Date(items[0].parsed.x).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`,
                             label: (item) => ` ${rupees(item.parsed.y)} · ${item.dataset.label}`,
                         },
                     },

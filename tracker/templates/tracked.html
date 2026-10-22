@@ -188,7 +188,7 @@
             <div class="flex gap-1" role="group" aria-label="Period shown">
                 {% for days, label in ((30, '1 month'), (90, '3 months'), (365, '1 year'), (0, 'All')) %}
                 <button type="button" class="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-medium aria-pressed:border-emerald-600 aria-pressed:bg-emerald-600 aria-pressed:text-white dark:border-slate-700"
-                        data-history-range="{{ days }}" aria-pressed="{{ 'true' if days == 0 else 'false' }}">{{ label }}</button>
+                        data-history-range="{{ days }}" aria-pressed="{{ 'true' if days == 30 else 'false' }}">{{ label }}</button>
                 {% endfor %}
             </div>
             <p class="muted text-xs tabular-nums" data-history-stats></p>
